@@ -4,6 +4,7 @@ import warnings
 
 import altair as alt
 import pandas as pd
+import numpy as np
 import torch
 
 from transformers import AutoModel, AutoTokenizer
@@ -33,7 +34,7 @@ def load_embeddings(model_id):
 class EmbeddingsData:
     model_id: str
     label: str
-    data: torch.Tensor
+    data: np.ndarray
 
     def __str__(self):
         return f'({self.model_id}) {self.label}'
@@ -57,7 +58,7 @@ class EmbeddingsLoader:
     
     def from_tokens(self, tokens, label) -> EmbeddingsData:
         with torch.no_grad():
-            extracted_embeddings = self.embeddings.forward(tokens).squeeze()
+            extracted_embeddings = self.embeddings.forward(tokens).squeeze().numpy()
 
         return EmbeddingsData(self.model_id, label, extracted_embeddings)
 
