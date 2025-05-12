@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import altair as alt
+from sklearn.decomposition import PCA
 import torch
 
 from embeddings_analysis import EmbeddingsData
@@ -17,12 +18,6 @@ default_props = {
 def plot_singular_values(embeddings_data: EmbeddingsData) -> alt.Chart:
     """
     Create a chart showing the singular value distribution from PCA.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        
-    Returns:
-        An Altair chart object
     """
     sv_df = pd.DataFrame({
         'Component': np.arange(1, len(embeddings_data.pca.singular_values_) + 1),
@@ -43,12 +38,6 @@ def plot_singular_values(embeddings_data: EmbeddingsData) -> alt.Chart:
 def plot_cumulative_variance(embeddings_data: EmbeddingsData) -> alt.Chart:
     """
     Create a chart showing the cumulative explained variance from PCA.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        
-    Returns:
-        An Altair chart object
     """
     explained_variance_ratio = embeddings_data.pca.explained_variance_ratio_
     cumulative_variance = np.cumsum(explained_variance_ratio)
@@ -84,16 +73,8 @@ def plot_pca_2d_projection(embeddings_data: EmbeddingsData,
                            colorscheme: str = 'viridis') -> alt.Chart:
     """
     Create a 2D scatter plot of two principal components from PCA.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        component1: Index of the first component to plot
-        component2: Index of the second component to plot
-        colorscheme: Color scheme for the plot
-        
-    Returns:
-        An Altair chart object
     """
+
     transformed = embeddings_data.pca_result
     projection_df = pd.DataFrame({
         f'Component{component1+1}': transformed[:, component1],
@@ -116,12 +97,6 @@ def plot_pca_2d_projection(embeddings_data: EmbeddingsData,
 def plot_consecutive_distances(embeddings_data: EmbeddingsData) -> alt.Chart:
     """
     Create a chart showing distances between consecutive number embeddings.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        
-    Returns:
-        An Altair chart object
     """
     data = embeddings_data.data
     
@@ -146,14 +121,6 @@ def plot_principal_component_patterns(embeddings_data: EmbeddingsData,
                                 n_components: int = 5, n_values: int = 100) -> alt.Chart:
     """
     Create a chart showing patterns in the top PCA components.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        n_components: Number of components to show
-        n_values: Number of values to show for each component
-        
-    Returns:
-        An Altair chart object
     """
     component_dfs = []
     for i in range(min(n_components, len(embeddings_data.pca.components_))):
@@ -185,13 +152,6 @@ def plot_principal_component_patterns(embeddings_data: EmbeddingsData,
 def plot_correlation_heatmap(embeddings_data: EmbeddingsData, n_vectors: int = 20) -> alt.Chart:
     """
     Create a heatmap showing correlations between the top components.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        n_vectors: Number of vectors to include in the heatmap
-        
-    Returns:
-        An Altair chart object
     """
     transformed = embeddings_data.pca_result
     n_vectors = min(n_vectors, transformed.shape[1])
@@ -238,13 +198,6 @@ def get_digit(num: int, position: int) -> int:
 def prepare_digit_data(embeddings_data: EmbeddingsData, n_components: int = 3) -> pd.DataFrame:
     """
     Prepare a DataFrame with digit information for visualization.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        n_components: Number of components to include
-        
-    Returns:
-        A DataFrame with digit information
     """
     transformed = embeddings_data.pca_result
     n_components = min(n_components, transformed.shape[1])
@@ -278,16 +231,6 @@ def plot_by_digit(embeddings_data: EmbeddingsData, digit_df: pd.DataFrame,
                  digit_type: str, component1: int = 1, component2: int = 2) -> alt.Chart:
     """
     Create a scatter plot colored by a specific digit position.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        digit_df: DataFrame with digit information
-        digit_type: Type of digit to visualize ('OnesDigit', 'TensDigit', or 'HundredsDigit')
-        component1: First component to use (1-indexed)
-        component2: Second component to use (1-indexed)
-        
-    Returns:
-        An Altair chart object
     """
     # Validate digit type
     valid_types = ['OnesDigit', 'TensDigit', 'HundredsDigit']
@@ -317,14 +260,6 @@ def plot_by_digit_length(embeddings_data: EmbeddingsData,
                         component1: int = 0, component2: int = 1) -> alt.Chart:
     """
     Create a scatter plot comparing single, double, and triple digit numbers.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        component1: Index of the first component to plot
-        component2: Index of the second component to plot
-        
-    Returns:
-        An Altair chart object
     """
     transformed = embeddings_data.pca_result
     digit_length_df = pd.DataFrame({
@@ -353,15 +288,6 @@ def plot_special_numbers(embeddings_data: EmbeddingsData,
                        special_numbers: list[int] = None, component1: int = 0, component2: int = 1) -> alt.Chart:
     """
     Create a scatter plot highlighting special numbers.
-    
-    Args:
-        embeddings_data: The embedding data being analyzed
-        special_numbers: List of numbers to highlight (if None, uses default list)
-        component1: Index of the first component to plot
-        component2: Index of the second component to plot
-        
-    Returns:
-        An Altair chart object
     """
     transformed = embeddings_data.pca_result
     if special_numbers is None:
@@ -451,15 +377,3 @@ def analyze_embeddings(embeddings_data: EmbeddingsData, n_components: int = 100,
     }
     
     return charts
-
-# Example usage:
-# # Import module
-# import pca_analysis
-# 
-# # Use individual functions
-# chart1 = pca_analysis.plot_pca_singular_values(my_embeddings)
-# chart2 = pca_analysis.plot_pca_2d_projection(my_embeddings)
-# 
-# # Or use the comprehensive analysis function
-# all_charts = pca_analysis.analyze_embeddings(my_embeddings)
-# all_charts['singular_values']  # Access specific chart

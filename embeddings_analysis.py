@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, cached_property
 import warnings
 
 import altair as alt
@@ -14,10 +14,10 @@ from sklearn.manifold import TSNE
 from umap import UMAP
 
 @cache
-def smallest_multitoken_number(model_id, upper_limit=1200):
+def smallest_multitoken_number(model_id, lower_limit=0, upper_limit=1200):
     tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-    for num in range(upper_limit):
+    for num in range(lower_limit, upper_limit):
         tokens = tokenizer.tokenize(str(num))
         if len(tokens) > 1:
             return num
@@ -38,6 +38,14 @@ class EmbeddingsData:
 
     def __str__(self):
         return f'({self.model_id}) {self.label}'
+    
+    @cached_property
+    def pca(self):
+        return PCA(n_components=100)
+    
+    @cached_property
+    def pca_result(self):
+        return self.pca.fit_transform(self.data)
 
 class EmbeddingsLoader:
     def __init__(self, model_id):
@@ -85,13 +93,9 @@ default_props = {
     'width': 400,
 }
 
-def pca(embeddings_data: EmbeddingsData, colorscheme='viridis'):
-    raw_data = embeddings_data.data
-
-    pca = PCA(n_components=2)
-    pca_result = pca.fit_transform(raw_data)
-
-    pca_df = pd.DataFrame(pca_result, columns=['PC1', 'PC2'])
+    
+def plot_pca(self: EmbeddingsData, colorscheme='viridis'):
+    pca_df = pd.DataFrame(self.pca_result[:, 0:2], columns=['PC1', 'PC2'])
     pca_df['number'] = range(1000)
 
     chart = alt.Chart(pca_df).mark_circle(size=60).encode(
@@ -100,13 +104,13 @@ def pca(embeddings_data: EmbeddingsData, colorscheme='viridis'):
         color=alt.Color('number:Q', scale=alt.Scale(scheme=colorscheme)),
         tooltip=['number:Q', 'PC1:Q', 'PC2:Q']
     ).properties(
-        title=f'{embeddings_data}: PCA',
+        title=f'{self}: PCA',
         **default_props
     ).interactive()
 
     return chart
 
-def tsne(embeddings_data: EmbeddingsData, n_iter=1000, random_state=None, colorscheme='viridis'):
+def plot_tsne(embeddings_data: EmbeddingsData, n_iter=1000, random_state=None, colorscheme='viridis'):
     raw_data = embeddings_data.data
 
     with warnings.catch_warnings(category=UserWarning):
@@ -132,7 +136,7 @@ def tsne(embeddings_data: EmbeddingsData, n_iter=1000, random_state=None, colors
 
     return chart
 
-def umap(embeddings_data: EmbeddingsData, n_epochs=2000, random_state=None, colorscheme='viridis'):
+def plot_umap(embeddings_data: EmbeddingsData, n_epochs=2000, random_state=None, colorscheme='viridis'):
     # setting random_state will disable parallelization
 
     raw_data = embeddings_data.data
@@ -167,7 +171,7 @@ def plot_embeddings(model_id):
     del loader
 
     return alt.vconcat(
-        alt.hconcat(pca(number_data), pca(random_data)),
-        alt.hconcat(tsne(number_data), tsne(random_data)),
-        alt.hconcat(umap(number_data), umap(random_data))
+        alt.hconcat(plot_pca(number_data), plot_pca(random_data)),
+        alt.hconcat(plot_tsne(number_data), plot_tsne(random_data)),
+        alt.hconcat(plot_umap(number_data), plot_umap(random_data))
     )
