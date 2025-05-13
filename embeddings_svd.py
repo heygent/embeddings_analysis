@@ -2,8 +2,6 @@ import numpy as np
 import pandas as pd
 import altair as alt
 from sklearn.decomposition import PCA
-import torch
-
 from embeddings_analysis import EmbeddingsData
 
 # Disable max rows limit for Altair
@@ -15,32 +13,34 @@ default_props = {
     'height': 500
 }
 
-def plot_singular_values(embeddings_data: EmbeddingsData) -> alt.Chart:
-    """
-    Create a chart showing the singular value distribution from PCA.
-    """
-    sv_df = pd.DataFrame({
-        'Component': np.arange(1, len(embeddings_data.pca.singular_values_) + 1),
-        'SingularValue': embeddings_data.pca.singular_values_
+def pca_decomposition(embeddings_data: EmbeddingsData, n_components: int = 100) -> tuple[PCA, np.ndarray]:
+    """Perform PCA decomposition on embedding data."""
+    pca = PCA(n_components=n_components)
+    transformed = pca.fit_transform(embeddings_data.data)
+    
+    return pca, transformed
+
+def plot_explained_variance(embeddings_data: EmbeddingsData, pca: PCA) -> alt.Chart:
+    """Create a chart showing the explained variance per component."""
+    ev_df = pd.DataFrame({
+        'Component': np.arange(1, len(pca.explained_variance_) + 1),
+        'ExplainedVariance': pca.explained_variance_
     })
 
-    chart = alt.Chart(sv_df).mark_line(point=True).encode(
+    chart = alt.Chart(ev_df).mark_line(point=True).encode(
         x=alt.X('Component:Q', title='Component Index'),
-        y=alt.Y('SingularValue:Q', title='Singular Value'),
-        tooltip=['Component', 'SingularValue']
+        y=alt.Y('ExplainedVariance:Q', title='Explained Variance'),
+        tooltip=['Component', 'ExplainedVariance']
     ).properties(
-        title=f'{embeddings_data}: Singular Value Distribution',
+        title=f'{embeddings_data}: Explained Variance Distribution',
         **default_props
     ).interactive()
     
     return chart
 
-def plot_cumulative_variance(embeddings_data: EmbeddingsData) -> alt.Chart:
-    """
-    Create a chart showing the cumulative explained variance from PCA.
-    """
-    explained_variance_ratio = embeddings_data.pca.explained_variance_ratio_
-    cumulative_variance = np.cumsum(explained_variance_ratio)
+def plot_cumulative_variance(embeddings_data: EmbeddingsData, pca: PCA) -> alt.Chart:
+    """Create a chart showing the cumulative explained variance."""
+    cumulative_variance = np.cumsum(pca.explained_variance_ratio_)
 
     variance_df = pd.DataFrame({
         'Components': np.arange(1, len(cumulative_variance) + 1),
@@ -68,14 +68,10 @@ def plot_cumulative_variance(embeddings_data: EmbeddingsData) -> alt.Chart:
 
     return chart + threshold_rule
 
-def plot_pca_2d_projection(embeddings_data: EmbeddingsData, 
-                           component1: int = 0, component2: int = 1, 
-                           colorscheme: str = 'viridis') -> alt.Chart:
-    """
-    Create a 2D scatter plot of two principal components from PCA.
-    """
-
-    transformed = embeddings_data.pca_result
+def plot_2d_projection(embeddings_data: EmbeddingsData, transformed: np.ndarray, 
+                      component1: int = 0, component2: int = 1, 
+                      colorscheme: str = 'viridis') -> alt.Chart:
+    """Create a 2D scatter plot of two principal components."""
     projection_df = pd.DataFrame({
         f'Component{component1+1}': transformed[:, component1],
         f'Component{component2+1}': transformed[:, component2],
@@ -95,12 +91,8 @@ def plot_pca_2d_projection(embeddings_data: EmbeddingsData,
     return chart
 
 def plot_consecutive_distances(embeddings_data: EmbeddingsData) -> alt.Chart:
-    """
-    Create a chart showing distances between consecutive number embeddings.
-    """
-    data = embeddings_data.data
-    
-    consecutive_distances = np.linalg.norm(data[1:] - data[:-1], axis=1)
+    """Create a chart showing distances between consecutive number embeddings."""
+    consecutive_distances = np.linalg.norm(embeddings_data.data[1:] - embeddings_data.data[:-1], axis=1)
     distances_df = pd.DataFrame({
         'Number': np.arange(1, len(consecutive_distances) + 1),
         'Distance': consecutive_distances
@@ -117,43 +109,50 @@ def plot_consecutive_distances(embeddings_data: EmbeddingsData) -> alt.Chart:
     
     return chart
 
-def plot_principal_component_patterns(embeddings_data: EmbeddingsData, 
-                                n_components: int = 5, n_values: int = 100) -> alt.Chart:
-    """
-    Create a chart showing patterns in the top PCA components.
-    """
+def plot_component_patterns(embeddings_data: EmbeddingsData, pca: PCA, 
+                           n_components: int = 5, n_values: int = 100, 
+                           facet: bool = True) -> alt.Chart:
+    """Create a chart showing patterns in the top components."""
     component_dfs = []
-    for i in range(min(n_components, len(embeddings_data.pca.components_))):
+    for i in range(min(n_components, len(pca.components_))):
         df = pd.DataFrame({
-            'Index': np.arange(min(n_values, len(embeddings_data.pca.components_[i]))),
-            'Value': embeddings_data.pca.components_[i, :min(n_values, len(embeddings_data.pca.components_[i]))],
+            'Index': np.arange(min(n_values, len(pca.components_[i]))),
+            'Value': pca.components_[i, :min(n_values, len(pca.components_[i]))],
             'Component': f'Component {i+1}'
         })
         component_dfs.append(df)
 
     component_df = pd.concat(component_dfs)
 
-    chart = alt.Chart(component_df).mark_line().encode(
+    base_chart = alt.Chart(component_df).mark_line().encode(
         x=alt.X('Index:Q', title='Index'),
-        y=alt.Y('Value:Q', title='Value'),
-        color='Component:N',
+        color=alt.Color('Component:N', title='Component'),
         tooltip=['Component', 'Index', 'Value']
     ).properties(
-        title=f'{embeddings_data}: PCA Component Patterns',
+        title=f'{embeddings_data}: Component Patterns',
         **default_props
-    ).facet(
-        row='Component:N'
-    ).resolve_scale(
-        y='independent'
     ).interactive()
+    
+    if facet:
+        # Create separate plots for each component
+        chart = base_chart.encode(
+            y=alt.Y('Value:Q', title='Value')
+        ).facet(
+            row='Component:N'
+        ).resolve_scale(
+            y='independent'
+        )
+    else:
+        # Create a single plot with all components overlaid
+        chart = base_chart.encode(
+            y=alt.Y('Value:Q', title='Value')
+        )
     
     return chart
 
-def plot_correlation_heatmap(embeddings_data: EmbeddingsData, n_vectors: int = 20) -> alt.Chart:
-    """
-    Create a heatmap showing correlations between the top components.
-    """
-    transformed = embeddings_data.pca_result
+def plot_correlation_heatmap(embeddings_data: EmbeddingsData, transformed: np.ndarray, 
+                            n_vectors: int = 20) -> alt.Chart:
+    """Create a heatmap showing correlations between the top components."""
     n_vectors = min(n_vectors, transformed.shape[1])
     correlations = np.corrcoef(transformed[:, :n_vectors].T)
 
@@ -175,7 +174,7 @@ def plot_correlation_heatmap(embeddings_data: EmbeddingsData, n_vectors: int = 2
                       scale=alt.Scale(scheme='blueorange', domain=[-1, 1])),
         tooltip=['Component1', 'Component2', 'Correlation']
     ).properties(
-        title=f'{embeddings_data}: Correlations Between Top Singular Vectors',
+        title=f'{embeddings_data}: Correlations Between Top Principal Components',
         width=600,
         height=600
     )
@@ -183,23 +182,11 @@ def plot_correlation_heatmap(embeddings_data: EmbeddingsData, n_vectors: int = 2
     return chart
 
 def get_digit(num: int, position: int) -> int:
-    """
-    Get the digit at a specific position.
-    
-    Args:
-        num: The number to extract the digit from
-        position: Position (0=ones, 1=tens, 2=hundreds)
-        
-    Returns:
-        The digit at the specified position
-    """
+    """Get the digit at a specific position (0=ones, 1=tens, 2=hundreds)."""
     return (num // 10**position) % 10
 
-def prepare_digit_data(embeddings_data: EmbeddingsData, n_components: int = 3) -> pd.DataFrame:
-    """
-    Prepare a DataFrame with digit information for visualization.
-    """
-    transformed = embeddings_data.pca_result
+def prepare_digit_data(transformed: np.ndarray, n_components: int = 3) -> pd.DataFrame:
+    """Prepare a DataFrame with digit information for visualization."""
     n_components = min(n_components, transformed.shape[1])
     digit_data = []
     
@@ -229,9 +216,7 @@ def prepare_digit_data(embeddings_data: EmbeddingsData, n_components: int = 3) -
 
 def plot_by_digit(embeddings_data: EmbeddingsData, digit_df: pd.DataFrame, 
                  digit_type: str, component1: int = 1, component2: int = 2) -> alt.Chart:
-    """
-    Create a scatter plot colored by a specific digit position.
-    """
+    """Create a scatter plot colored by a specific digit position."""
     # Validate digit type
     valid_types = ['OnesDigit', 'TensDigit', 'HundredsDigit']
     if digit_type not in valid_types:
@@ -256,12 +241,9 @@ def plot_by_digit(embeddings_data: EmbeddingsData, digit_df: pd.DataFrame,
     
     return chart
 
-def plot_by_digit_length(embeddings_data: EmbeddingsData, 
+def plot_by_digit_length(embeddings_data: EmbeddingsData, transformed: np.ndarray, 
                         component1: int = 0, component2: int = 1) -> alt.Chart:
-    """
-    Create a scatter plot comparing single, double, and triple digit numbers.
-    """
-    transformed = embeddings_data.pca_result
+    """Create a scatter plot comparing single, double, and triple digit numbers."""
     digit_length_df = pd.DataFrame({
         'Number': range(min(1000, transformed.shape[0])),
         'Component1': transformed[:min(1000, transformed.shape[0]), component1],
@@ -284,12 +266,10 @@ def plot_by_digit_length(embeddings_data: EmbeddingsData,
     
     return chart
 
-def plot_special_numbers(embeddings_data: EmbeddingsData, 
-                       special_numbers: list[int] = None, component1: int = 0, component2: int = 1) -> alt.Chart:
-    """
-    Create a scatter plot highlighting special numbers.
-    """
-    transformed = embeddings_data.pca_result
+def plot_special_numbers(embeddings_data: EmbeddingsData, transformed: np.ndarray, 
+                       special_numbers: list[int] = None, 
+                       component1: int = 0, component2: int = 1) -> alt.Chart:
+    """Create a scatter plot highlighting special numbers."""
     if special_numbers is None:
         special_numbers = [0, 1, 10, 100, 42, 69, 314, 404, 500, 666, 911, 999]
     
@@ -344,36 +324,29 @@ def plot_special_numbers(embeddings_data: EmbeddingsData,
     
     return chart
 
-# Complete analysis function that returns all charts
 def analyze_embeddings(embeddings_data: EmbeddingsData, n_components: int = 100, 
-                      special_numbers: list[int] = None) -> dict[str, alt.Chart]:
-    """
-    Perform comprehensive PCA analysis on embeddings and return all visualizations.
+                      special_numbers: list[int] = None, 
+                      facet_components: bool = True) -> dict[str, alt.Chart]:
+    """Perform comprehensive PCA analysis on embeddings and return all visualizations."""
+    # Perform PCA
+    pca, transformed = pca_decomposition(embeddings_data, n_components)
     
-    Args:
-        embeddings_data: The embedding data to analyze
-        n_components: Number of PCA components to extract
-        special_numbers: List of numbers to highlight in special numbers plot
-        
-    Returns:
-        Dictionary of named charts
-    """
     # Prepare digit data
-    digit_df = prepare_digit_data(embeddings_data)
+    digit_df = prepare_digit_data(transformed)
     
     # Create all charts
     charts = {
-        'singular_values': plot_singular_values(embeddings_data),
-        'cumulative_variance': plot_cumulative_variance(embeddings_data),
-        'projection': plot_pca_2d_projection(embeddings_data),
+        'explained_variance': plot_explained_variance(embeddings_data, pca),
+        'cumulative_variance': plot_cumulative_variance(embeddings_data, pca),
+        'projection': plot_2d_projection(embeddings_data, transformed),
         'consecutive_distances': plot_consecutive_distances(embeddings_data),
-        'component_patterns': plot_principal_component_patterns(embeddings_data),
-        'correlation_heatmap': plot_correlation_heatmap(embeddings_data),
+        'component_patterns': plot_component_patterns(embeddings_data, pca, facet=facet_components),
+        'correlation_heatmap': plot_correlation_heatmap(embeddings_data, transformed),
         'ones_digit': plot_by_digit(embeddings_data, digit_df, 'OnesDigit'),
         'tens_digit': plot_by_digit(embeddings_data, digit_df, 'TensDigit'),
         'hundreds_digit': plot_by_digit(embeddings_data, digit_df, 'HundredsDigit'),
-        'digit_length': plot_by_digit_length(embeddings_data),
-        'special_numbers': plot_special_numbers(embeddings_data, special_numbers)
+        'digit_length': plot_by_digit_length(embeddings_data, transformed),
+        'special_numbers': plot_special_numbers(embeddings_data, transformed, special_numbers)
     }
     
     return charts

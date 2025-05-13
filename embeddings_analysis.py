@@ -14,10 +14,10 @@ from sklearn.manifold import TSNE
 from umap import UMAP
 
 @cache
-def smallest_multitoken_number(model_id, lower_limit=0, upper_limit=1200):
+def smallest_multitoken_number(model_id, upper_limit=1200):
     tokenizer = AutoTokenizer.from_pretrained(model_id)
 
-    for num in range(lower_limit, upper_limit):
+    for num in range(upper_limit):
         tokens = tokenizer.tokenize(str(num))
         if len(tokens) > 1:
             return num
