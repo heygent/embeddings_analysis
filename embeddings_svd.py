@@ -244,60 +244,51 @@ class EmbeddingsPCA(EmbeddingsDimReduction):
 
     def plot_by_digit(
         self,
-        digit_type: str,
-        digit_df: pd.DataFrame = None,
-        component1: int = 1,
-        component2: int = 2,
+        digit_position: int,
+        x_component: int = 0,
+        y_component: int = 1,
     ) -> alt.Chart:
-        """Create a scatter plot colored by a specific digit position."""
-        if digit_df is None:
-            digit_df = prepare_digit_data(self.transformed)
+        """Create a scatter plot colored by digit position (0=ones, 1=tens, 2=hundreds)."""
+        if not 0 <= digit_position <= 2:
+            raise ValueError("digit_position must be 0 (ones), 1 (tens), or 2 (hundreds)")
 
-        valid_types = ["OnesDigit", "TensDigit", "HundredsDigit"]
-        if digit_type not in valid_types:
-            raise ValueError(f"digit_type must be one of {valid_types}")
-
-        label_map = {
-            "OnesDigit": "Ones Digit",
-            "TensDigit": "Tens Digit",
-            "HundredsDigit": "Hundreds Digit",
-        }
+        digit_df = pd.DataFrame({
+            "Number": range(min(1000, self.transformed.shape[0])),
+            f"Component{x_component+1}": self.transformed[:min(1000, self.transformed.shape[0]), x_component],
+            f"Component{y_component+1}": self.transformed[:min(1000, self.transformed.shape[0]), y_component],
+            "Digit": [get_digit(n, digit_position) for n in range(min(1000, self.transformed.shape[0]))]
+        })
+        
+        position_labels = {0: "Ones", 1: "Tens", 2: "Hundreds"}
 
         return (
             alt.Chart(digit_df)
             .mark_circle(size=60, opacity=0.7)
             .encode(
-                x=alt.X(f"Component{component1}:Q", title=f"Component {component1}"),
-                y=alt.Y(f"Component{component2}:Q", title=f"Component {component2}"),
-                color=alt.Color(f"{digit_type}:N", title=label_map[digit_type]),
-                tooltip=[
-                    "Number",
-                    "OnesDigit",
-                    "TensDigit",
-                    "HundredsDigit",
-                    f"Component{component1}",
-                    f"Component{component2}",
-                ],
+                x=alt.X(f"Component{x_component+1}:Q", title=f"Component {x_component+1}"),
+                y=alt.Y(f"Component{y_component+1}:Q", title=f"Component {y_component+1}"),
+                color=alt.Color("Digit:N", title=f"{position_labels[digit_position]} Digit"),
+                tooltip=["Number", "Digit", f"Component{x_component+1}", f"Component{y_component+1}"]
             )
             .properties(
-                title=f"{self.embeddings_data}: Embeddings Colored by {label_map[digit_type]}",
+                title=f"{self.embeddings_data}: Embeddings Colored by {position_labels[digit_position]} Digit",
                 **default_props,
             )
             .interactive()
         )
 
     def plot_by_digit_length(
-        self, component1: int = 0, component2: int = 1
+        self, x_component: int = 0, y_component: int = 1
     ) -> alt.Chart:
         """Create a scatter plot comparing single, double, and triple digit numbers."""
         digit_length_df = pd.DataFrame(
             {
                 "Number": range(min(1000, self.transformed.shape[0])),
                 "Component1": self.transformed[
-                    : min(1000, self.transformed.shape[0]), component1
+                    : min(1000, self.transformed.shape[0]), x_component
                 ],
                 "Component2": self.transformed[
-                    : min(1000, self.transformed.shape[0]), component2
+                    : min(1000, self.transformed.shape[0]), y_component
                 ],
                 "DigitLength": [
                     "Single" if n < 10 else "Double" if n < 100 else "Triple"
@@ -310,8 +301,8 @@ class EmbeddingsPCA(EmbeddingsDimReduction):
             alt.Chart(digit_length_df)
             .mark_circle(opacity=0.7)
             .encode(
-                x=alt.X("Component1:Q", title=f"Component {component1 + 1}"),
-                y=alt.Y("Component2:Q", title=f"Component {component2 + 1}"),
+                x=alt.X("Component1:Q", title=f"Component {x_component + 1}"),
+                y=alt.Y("Component2:Q", title=f"Component {y_component + 1}"),
                 color=alt.Color("DigitLength:N", title="Digit Length"),
                 size=alt.Size(
                     "DigitLength:N", scale=alt.Scale(range=[200, 100, 30]), legend=None
@@ -328,8 +319,8 @@ class EmbeddingsPCA(EmbeddingsDimReduction):
     def plot_special_numbers(
         self,
         special_numbers: list[int] = None,
-        component1: int = 0,
-        component2: int = 1,
+        x_component: int = 0,
+        y_component: int = 1,
     ) -> alt.Chart:
         """Create a scatter plot highlighting special numbers."""
         if special_numbers is None:
@@ -341,10 +332,10 @@ class EmbeddingsPCA(EmbeddingsDimReduction):
             {
                 "Number": range(min(1000, self.transformed.shape[0])),
                 "Component1": self.transformed[
-                    : min(1000, self.transformed.shape[0]), component1
+                    : min(1000, self.transformed.shape[0]), x_component
                 ],
                 "Component2": self.transformed[
-                    : min(1000, self.transformed.shape[0]), component2
+                    : min(1000, self.transformed.shape[0]), y_component
                 ],
                 "DigitLength": [
                     "Single" if n < 10 else "Double" if n < 100 else "Triple"
@@ -365,8 +356,8 @@ class EmbeddingsPCA(EmbeddingsDimReduction):
             alt.Chart(df)
             .mark_circle(opacity=0.5)
             .encode(
-                x=alt.X("Component1:Q", title=f"Component {component1 + 1}"),
-                y=alt.Y("Component2:Q", title=f"Component {component2 + 1}"),
+                x=alt.X("Component1:Q", title=f"Component {x_component + 1}"),
+                y=alt.Y("Component2:Q", title=f"Component {y_component + 1}"),
                 color=alt.condition(
                     alt.datum.IsSpecial,
                     alt.value("red"),
@@ -445,7 +436,6 @@ def analyze_embeddings(
 ) -> dict[str, alt.Chart]:
     """Perform comprehensive PCA analysis on embeddings and return all visualizations."""
     pca_result = pca_decomposition(embeddings_data, n_components)
-    digit_df = prepare_digit_data(pca_result.transformed)
 
     return {
         "explained_variance": pca_result.plot_explained_variance(),
@@ -456,9 +446,9 @@ def analyze_embeddings(
             facet=facet_components
         ),
         "correlation_heatmap": pca_result.plot_correlation_heatmap(),
-        "ones_digit": pca_result.plot_by_digit("OnesDigit", digit_df),
-        "tens_digit": pca_result.plot_by_digit("TensDigit", digit_df),
-        "hundreds_digit": pca_result.plot_by_digit("HundredsDigit", digit_df),
+        "ones_digit": pca_result.plot_by_digit(0),
+        "tens_digit": pca_result.plot_by_digit(1),
+        "hundreds_digit": pca_result.plot_by_digit(2),
         "digit_length": pca_result.plot_by_digit_length(),
         "special_numbers": pca_result.plot_special_numbers(special_numbers),
     }

@@ -16,16 +16,6 @@ from sklearn.manifold import TSNE
 from umap import UMAP
 
 
-@cache
-def smallest_multitoken_number(model_id, upper_limit=1200):
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
-
-    for num in range(upper_limit):
-        tokens = tokenizer.tokenize(str(num))
-        if len(tokens) > 1:
-            return num
-
-
 def load_embeddings(model_id):
     model = AutoModel.from_pretrained(model_id)
     model.eval()
@@ -59,10 +49,19 @@ class EmbeddingsLoader:
 
     def from_words(self, words, label) -> EmbeddingsData:
         return self.from_tokens(self.tokenize(words), label)
+    
+    @cache
+    def smallest_multitoken_number(self, upper_limit=1200):
+        for num in range(upper_limit):
+            tokens = self.tokenizer.tokenize(str(num))
+            if len(tokens) > 1:
+                return num
+        raise ValueError(f"All numbers from 0 to {upper_limit} are single token. ")
+
 
     def numbers(self, upper_limit=None) -> EmbeddingsData:
         if upper_limit is None:
-            upper_limit = smallest_multitoken_number(self.model_id)
+            upper_limit = self.smallest_multitoken_number()
 
         return self.from_words(
             [str(i) for i in range(upper_limit)],
@@ -87,7 +86,12 @@ class EmbeddingsData:
         return f"({self.model_id}) {self.label}"
 
     def dim_reduction(self, obj):
-        return EmbeddingsDimReduction(self, obj, obj.fit_transform(self.data))
+        if isinstance(obj, PCA):
+            cls = EmbeddingsPCA
+        else:
+            cls = EmbeddingsDimReduction
+        
+        return cls(self, obj, obj.fit_transform(self.data))
 
 
 default_props = {"width": 600, "height": 500}
@@ -125,7 +129,7 @@ class EmbeddingsDimReduction:
                 ),
                 color=alt.Color(
                     "Number:Q",
-                    scale=alt.Scale(scheme=colorscheme),
+                    scale=alt.Scale(scheme=colorscheme), # type: ignore
                     title="Number Value",
                 ),
                 tooltip=[
