@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cache
+import warnings
 
 import altair as alt
 import pandas as pd
@@ -141,10 +142,20 @@ class EmbeddingsDimReduction:
         )
 
 
-def dim_reductions(embeddings_data: EmbeddingsData):
-    pca = PCA(n_components=2)
-    tsne = TSNE(n_components=2, random_state=42)
-    umap = UMAP(n_components=2, random_state=42)
+def dim_reductions(embeddings_data: EmbeddingsData, random_state=None):
+    pca = PCA(n_components=100)
+
+    with warnings.catch_warnings(category=UserWarning):
+        tsne = TSNE(
+            n_components=2,
+            random_state=random_state,
+            n_iter=1000,
+        )
+
+    umap = UMAP(
+        n_components=2,
+        random_state=random_state
+    )
 
     return [embeddings_data.dim_reduction(reduction) for reduction in (pca, tsne, umap)]
 
