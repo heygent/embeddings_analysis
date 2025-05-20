@@ -451,7 +451,7 @@ class EmbeddingsDimReduction:
         )
 
     def plot_correlation_heatmap(self, n_vectors: int = 20) -> alt.Chart:
-        """Create a heatmap showing correlations between the top components."""
+        """Create a heatmap showing correlations between the top components, with value labels."""
         n_vectors = min(n_vectors, self.transformed.shape[1])
         correlations = np.corrcoef(self.transformed[:, :n_vectors].T)
 
@@ -464,9 +464,10 @@ class EmbeddingsDimReduction:
             for i in range(n_vectors)
             for j in range(n_vectors)
         ]
+        df = pd.DataFrame(corr_data)
 
-        return (
-            alt.Chart(pd.DataFrame(corr_data))
+        heatmap = (
+            alt.Chart(df)
             .mark_rect()
             .encode(
                 x=alt.X("Component1:O", title="Component"),
@@ -477,8 +478,27 @@ class EmbeddingsDimReduction:
                 ),
                 tooltip=["Component1", "Component2", "Correlation"],
             )
+        )
+
+        text = (
+            alt.Chart(df)
+            .mark_text(baseline="middle", fontSize=12)
+            .encode(
+                x=alt.X("Component1:O"),
+                y=alt.Y("Component2:O"),
+                text=alt.Text("Correlation:Q", format=".2f"),
+                color=alt.condition(
+                    "abs(datum.Correlation) > 0.5",
+                    alt.value("white"),
+                    alt.value("black"),
+                ),
+            )
+        )
+
+        return (
+            (heatmap + text)
             .properties(
-                title="Correlations Between Top Principal Components",
+                title=self.alt_title(),
                 width=600,
                 height=600,
             )
