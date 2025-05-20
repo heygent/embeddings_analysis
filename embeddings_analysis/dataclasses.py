@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import altair as alt
 import numpy as np
 import pandas as pd
-from sklearn.decomposition import PCA
 
 
 @dataclass
@@ -18,12 +17,7 @@ class EmbeddingsData:
         return f"({self.model_id}) {self.label}"
 
     def dim_reduction(self, obj):
-        if isinstance(obj, PCA):
-            cls = EmbeddingsPCA
-        else:
-            cls = EmbeddingsDimReduction
-
-        return cls(self, obj, obj.fit_transform(self.data))
+        return EmbeddingsDimReduction(self, obj, obj.fit_transform(self.data))
 
 
 default_props = {"width": 450, "height": 400}
@@ -270,15 +264,6 @@ class EmbeddingsDimReduction:
             .interactive()
         )
 
-
-@dataclass
-class EmbeddingsPCA(EmbeddingsDimReduction):
-    reduction: PCA
-
-    @property
-    def pca(self) -> PCA:
-        return self.reduction
-
     def plot_explained_variance(self) -> alt.Chart:
         """Create a chart showing the explained variance per component."""
         ev_df = pd.DataFrame(
@@ -411,6 +396,33 @@ class EmbeddingsPCA(EmbeddingsDimReduction):
             if facet
             else base_chart.encode(y=alt.Y("Value:Q", title="Value"))
         )
+    
+    def top_correlations_df(self, n_vectors: int = 20) -> pd.DataFrame:
+        n_vectors = min(n_vectors, self.transformed.shape[1])
+        correlations = np.corrcoef(self.transformed[:, :n_vectors].T)
+
+        corr_df = pd.DataFrame([
+            {
+                "Component1": i + 1,
+                "Component2": j + 1,
+                "Correlation": correlations[i, j],
+            }
+            for i in range(n_vectors)
+            for j in range(n_vectors)
+        ])
+
+        # Exclude self-correlations
+        non_self = corr_df[corr_df['Component1'] != corr_df['Component2']]
+
+        # To avoid duplicate pairs (e.g., (1,2) and (2,1)), sort the component indices and drop duplicates
+        pairs = non_self.copy()
+        pairs['pair'] = pairs.apply(lambda row: tuple(sorted([row['Component1'], row['Component2']])), axis=1)
+        unique_pairs = pairs.drop_duplicates('pair')
+
+        # Get the pairs with the largest absolute correlations
+        top_corrs = unique_pairs.sort_values('Correlation', key=abs, ascending=False)
+
+        return top_corrs[['Component1', 'Component2', 'Correlation']]
 
     def plot_correlation_heatmap(self, n_vectors: int = 20) -> alt.Chart:
         """Create a heatmap showing correlations between the top components."""
