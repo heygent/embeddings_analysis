@@ -268,8 +268,8 @@ class EmbeddingsDimReduction:
         """Create a chart showing the explained variance per component."""
         ev_df = pd.DataFrame(
             {
-                "Component": np.arange(1, len(self.pca.explained_variance_) + 1),
-                "ExplainedVariance": self.pca.explained_variance_,
+                "Component": np.arange(1, len(self.reduction.explained_variance_) + 1),
+                "ExplainedVariance": self.reduction.explained_variance_,
             }
         )
 
@@ -290,7 +290,7 @@ class EmbeddingsDimReduction:
 
     def plot_cumulative_variance(self) -> alt.Chart:
         """Create a chart showing the cumulative explained variance."""
-        cumulative_variance = np.cumsum(self.pca.explained_variance_ratio_)
+        cumulative_variance = np.cumsum(self.reduction.explained_variance_ratio_)
 
         variance_df = pd.DataFrame(
             {
@@ -329,6 +329,11 @@ class EmbeddingsDimReduction:
         )
 
         return chart + threshold_rule
+
+    def plot_variance_overview(self) -> alt.Chart:
+        return alt.hconcat(
+            self.plot_explained_variance(), self.plot_cumulative_variance()
+        ).properties(title=self.alt_title())
 
     def plot_consecutive_distances(self) -> alt.Chart:
         """Create a chart showing distances between consecutive number embeddings."""
@@ -396,33 +401,54 @@ class EmbeddingsDimReduction:
             if facet
             else base_chart.encode(y=alt.Y("Value:Q", title="Value"))
         )
-    
-    def top_correlations_df(self, n_vectors: int = 20) -> pd.DataFrame:
+
+    def top_correlations_df(
+        self, n_vectors: int = 20, min_correlation=0.01
+    ) -> pd.DataFrame:
         n_vectors = min(n_vectors, self.transformed.shape[1])
         correlations = np.corrcoef(self.transformed[:, :n_vectors].T)
 
-        corr_df = pd.DataFrame([
-            {
-                "Component1": i + 1,
-                "Component2": j + 1,
-                "Correlation": correlations[i, j],
-            }
-            for i in range(n_vectors)
-            for j in range(n_vectors)
-        ])
+        # Get upper triangle indices (excluding diagonal)
+        idx_i, idx_j = np.triu_indices(n_vectors, k=1)
+        data = {
+            "Component1": idx_i,
+            "Component2": idx_j,
+            "Correlation": correlations[idx_i, idx_j],
+        }
+        corr_df = pd.DataFrame(data)
 
-        # Exclude self-correlations
-        non_self = corr_df[corr_df['Component1'] != corr_df['Component2']]
+        # Sort by absolute correlation descending
+        corr_df = corr_df.reindex(
+            corr_df["Correlation"].abs().sort_values(ascending=False).index
+        )
+        corr_df = corr_df[["Component1", "Component2", "Correlation"]]
+        return corr_df[corr_df["Correlation"].abs() >= min_correlation]
 
-        # To avoid duplicate pairs (e.g., (1,2) and (2,1)), sort the component indices and drop duplicates
-        pairs = non_self.copy()
-        pairs['pair'] = pairs.apply(lambda row: tuple(sorted([row['Component1'], row['Component2']])), axis=1)
-        unique_pairs = pairs.drop_duplicates('pair')
-
-        # Get the pairs with the largest absolute correlations
-        top_corrs = unique_pairs.sort_values('Correlation', key=abs, ascending=False)
-
-        return top_corrs[['Component1', 'Component2', 'Correlation']]
+    def plot_top_correlated_components(self, n_vectors: int = 10) -> alt.Chart:
+        """
+        Plot the plot_by_digit_length chart for the top correlated component pairs.
+        Arranges the plots in a grid with two plots per row.
+        """
+        corr_df = self.top_correlations_df(n_vectors)
+        charts = []
+        for _, row in corr_df.iterrows():
+            i, j = int(row["Component1"]), int(row["Component2"])
+            chart = self.plot(x_component=i, y_component=j).properties(
+                title=f"Components {i + 1} vs {j + 1} (corr={row['Correlation']:.2f})"
+            )
+            charts.append(chart)
+            chart = self.plot_by_digit_length(x_component=i, y_component=j).properties(
+                title=f"Components {i + 1} vs {j + 1} (corr={row['Correlation']:.2f}) by digit length"
+            )
+            charts.append(chart)
+        # Arrange charts in a grid with two plots per row
+        rows = []
+        for k in range(0, len(charts), 2):
+            row = alt.hconcat(*charts[k : k + 2])
+            rows.append(row)
+        return alt.vconcat(*rows).properties(
+            title=self.alt_title(),
+        )
 
     def plot_correlation_heatmap(self, n_vectors: int = 20) -> alt.Chart:
         """Create a heatmap showing correlations between the top components."""
