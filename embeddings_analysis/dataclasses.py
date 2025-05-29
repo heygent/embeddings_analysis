@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 
 import altair as alt
 import numpy as np
@@ -31,6 +32,14 @@ class EmbeddingsDimReduction:
 
     def __str__(self):
         return f"({self.embeddings_data.model_id}) {self.embeddings_data.label} {self.reduction.__class__.__name__}"
+    
+    @cached_property
+    def df(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            self.transformed,
+            columns=(f'Component{i + 1}' for i in range(self.transformed.shape[1])),
+        ).reset_index(names='Number')
+    
 
     def alt_title(self, **kwargs) -> str:
         return alt.TitleParams(
@@ -46,16 +55,8 @@ class EmbeddingsDimReduction:
         self, x_component: int = 0, y_component: int = 1, colorscheme: str = "viridis"
     ) -> alt.Chart:
         """Create a 2D scatter plot of two principal components."""
-        projection_df = pd.DataFrame(
-            {
-                f"Component{x_component + 1}": self.transformed[:, x_component],
-                f"Component{y_component + 1}": self.transformed[:, y_component],
-                "Number": np.arange(self.transformed.shape[0]),
-            }
-        )
-
         return (
-            alt.Chart(projection_df)
+            alt.Chart(self.df)
             .mark_circle(size=60)
             .encode(
                 x=alt.X(
@@ -109,26 +110,10 @@ class EmbeddingsDimReduction:
                 "digit_position must be 0 (ones), 1 (tens), or 2 (hundreds)"
             )
 
-        digit_df = pd.DataFrame(
-            {
-                "Number": range(min(1000, self.transformed.shape[0])),
-                f"Component{x_component + 1}": self.transformed[
-                    : min(1000, self.transformed.shape[0]), x_component
-                ],
-                f"Component{y_component + 1}": self.transformed[
-                    : min(1000, self.transformed.shape[0]), y_component
-                ],
-                "Digit": [
-                    get_digit(n, digit_position)
-                    for n in range(min(1000, self.transformed.shape[0]))
-                ],
-            }
-        )
-
         position_labels = {0: "Ones", 1: "Tens", 2: "Hundreds"}
 
         return (
-            alt.Chart(digit_df)
+            alt.Chart(self.df)
             .mark_circle(size=60, opacity=0.7)
             .encode(
                 x=alt.X(
@@ -144,10 +129,13 @@ class EmbeddingsDimReduction:
                 ),
                 tooltip=[
                     "Number",
-                    "Digit",
+                    "Digit:N",
                     f"Component{x_component + 1}",
                     f"Component{y_component + 1}",
                 ],
+            )
+            .transform_calculate(
+                Digit=f"floor(datum.Number / pow(10, {digit_position})) % 10",
             )
             .properties(
                 title=f"Embeddings by {position_labels[digit_position]} Digit",
@@ -160,24 +148,8 @@ class EmbeddingsDimReduction:
         self, x_component: int = 0, y_component: int = 1
     ) -> alt.Chart:
         """Create a scatter plot comparing single, double, and triple digit numbers."""
-        digit_length_df = pd.DataFrame(
-            {
-                "Number": range(min(1000, self.transformed.shape[0])),
-                "Component1": self.transformed[
-                    : min(1000, self.transformed.shape[0]), x_component
-                ],
-                "Component2": self.transformed[
-                    : min(1000, self.transformed.shape[0]), y_component
-                ],
-                "DigitLength": [
-                    "Single" if n < 10 else "Double" if n < 100 else "Triple"
-                    for n in range(min(1000, self.transformed.shape[0]))
-                ],
-            }
-        )
-
         return (
-            alt.Chart(digit_length_df)
+            alt.Chart(self.df)
             .mark_circle(opacity=0.7)
             .encode(
                 x=alt.X("Component1:Q", title=f"Component {x_component + 1}"),
@@ -186,7 +158,10 @@ class EmbeddingsDimReduction:
                 size=alt.Size(
                     "DigitLength:N", scale=alt.Scale(range=[200, 100, 30]), legend=None
                 ),
-                tooltip=["Number", "DigitLength", "Component1", "Component2"],
+                tooltip=["Number", "DigitLength:N", "Component1", "Component2"],
+            )
+            .transform_calculate(
+                DigitLength="length(toString(datum.Number))",
             )
             .properties(
                 title="Comparison by Digit Length",
