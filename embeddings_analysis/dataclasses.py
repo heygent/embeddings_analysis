@@ -105,12 +105,16 @@ class EmbeddingsDimReduction:
         y_component: int = 1,
     ) -> alt.Chart:
         """Create a scatter plot colored by digit position (0=ones, 1=tens, 2=hundreds)."""
-        if not 0 <= digit_position <= 2:
-            raise ValueError(
-                "digit_position must be 0 (ones), 1 (tens), or 2 (hundreds)"
-            )
-
-        position_labels = {0: "Ones", 1: "Tens", 2: "Hundreds"}
+        
+        match digit_position:
+            case 0:
+                position_label = "Ones"
+            case 1:
+                position_label = "Tens"
+            case 2:
+                position_label = "Hundreds"
+            case _:
+                raise ValueError("digit_position must be 0 (ones), 1 (tens), or 2 (hundreds)")
 
         return (
             alt.Chart(self.df)
@@ -125,7 +129,7 @@ class EmbeddingsDimReduction:
                     title=f"Component {y_component + 1}",
                 ),
                 color=alt.Color(
-                    "Digit:N", title=f"{position_labels[digit_position]} Digit"
+                    "Digit:N", title=f"{position_label} Digit"
                 ),
                 tooltip=[
                     "Number",
@@ -138,7 +142,7 @@ class EmbeddingsDimReduction:
                 Digit=f"floor(datum.Number / pow(10, {digit_position})) % 10",
             )
             .properties(
-                title=f"Embeddings by {position_labels[digit_position]} Digit",
+                title=f"Embeddings by {position_label} Digit",
                 **default_props,
             )
             .interactive()
@@ -165,75 +169,6 @@ class EmbeddingsDimReduction:
             )
             .properties(
                 title="Comparison by Digit Length",
-                **default_props,
-            )
-            .interactive()
-        )
-
-    def plot_special_numbers(
-        self,
-        special_numbers: list[int] = None,
-        x_component: int = 0,
-        y_component: int = 1,
-        colorscheme: str = "viridis",
-    ) -> alt.Chart:
-        """Create a scatter plot highlighting special numbers."""
-        if special_numbers is None:
-            # special_numbers = [0, 1, 10, 100, 42, 69, 314, 404, 500, 666, 911, 999]
-            special_numbers = [*range(10), *range(10, 100, 10), *range(100, 1000, 100)]
-
-        special_numbers = [n for n in special_numbers if n < self.transformed.shape[0]]
-
-        df = pd.DataFrame(
-            {
-                "Number": range(min(1000, self.transformed.shape[0])),
-                "Component1": self.transformed[
-                    : min(1000, self.transformed.shape[0]), x_component
-                ],
-                "Component2": self.transformed[
-                    : min(1000, self.transformed.shape[0]), y_component
-                ],
-                "DigitLength": [
-                    "Single" if n < 10 else "Double" if n < 100 else "Triple"
-                    for n in range(min(1000, self.transformed.shape[0]))
-                ],
-                "IsSpecial": [
-                    n in special_numbers
-                    for n in range(min(1000, self.transformed.shape[0]))
-                ],
-            }
-        )
-
-        df["Label"] = df["Number"].apply(
-            lambda x: str(x) if x in special_numbers else ""
-        )
-
-        base_scatter = (
-            alt.Chart(df)
-            .mark_circle(opacity=0.5)
-            .encode(
-                x=alt.X("Component1:Q", title=f"Component {x_component + 1}"),
-                y=alt.Y("Component2:Q", title=f"Component {y_component + 1}"),
-                color=alt.condition(
-                    alt.datum.IsSpecial,
-                    alt.value("red"),
-                    alt.Color("DigitLength:N", scale=alt.Scale(scheme=colorscheme)),
-                ),
-                size=alt.condition(alt.datum.IsSpecial, alt.value(150), alt.value(30)),
-                tooltip=["Number", "IsSpecial", "Component1", "Component2"],
-            )
-        )
-
-        text_labels = (
-            alt.Chart(df[df["IsSpecial"]])
-            .mark_text(align="left", baseline="middle", dx=15)
-            .encode(x="Component1:Q", y="Component2:Q", text="Label:N")
-        )
-
-        return (
-            (base_scatter + text_labels)
-            .properties(
-                title="Special Numbers in Embedding Space",
                 **default_props,
             )
             .interactive()
@@ -274,10 +209,6 @@ class EmbeddingsDimReduction:
             }
         )
 
-        threshold_df = pd.DataFrame(
-            {"Threshold": [0.9], "Label": ["90% Explained Variance"]}
-        )
-
         chart = (
             alt.Chart(variance_df)
             .mark_line(point=True)
@@ -286,21 +217,20 @@ class EmbeddingsDimReduction:
                 y=alt.Y(
                     "CumulativeVariance:Q",
                     title="Cumulative Explained Variance",
-                    scale=alt.Scale(domain=[0, 1]),
-                ),
+                ).scale(domain=[0, 1]).axis(format=".0%"),
                 tooltip=["Components", "CumulativeVariance"],
             )
             .properties(
                 title="Cumulative Explained Variance",
                 **default_props,
             )
-            .interactive()
+            .interactive(bind_y=False)
         )
 
         threshold_rule = (
-            alt.Chart(threshold_df)
+            alt.Chart()
             .mark_rule(color="red", strokeDash=[4, 4])
-            .encode(y="Threshold:Q", tooltip=["Label"])
+            .encode(y=alt.Y(datum=0.9))
         )
 
         return chart + threshold_rule
