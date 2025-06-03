@@ -173,18 +173,21 @@ class EmbeddingsDimReduction:
             )
             .interactive()
         )
-
-    def plot_explained_variance(self) -> alt.Chart:
-        """Create a chart showing the explained variance per component."""
-        ev_df = pd.DataFrame(
+    
+    @cached_property
+    def variance_df(self) -> pd.DataFrame:
+        return pd.DataFrame(
             {
                 "Component": np.arange(1, len(self.reduction.explained_variance_) + 1),
                 "ExplainedVariance": self.reduction.explained_variance_,
+                "ExplainedVarianceRatio": self.reduction.explained_variance_ratio_,
             }
         )
 
+    def plot_explained_variance(self) -> alt.Chart:
+        """Create a chart showing the explained variance per component."""
         return (
-            alt.Chart(ev_df)
+            alt.Chart(self.variance_df)
             .mark_line(point=True)
             .encode(
                 x=alt.X("Component:Q", title="Component Index"),
@@ -200,17 +203,12 @@ class EmbeddingsDimReduction:
 
     def plot_cumulative_variance(self) -> alt.Chart:
         """Create a chart showing the cumulative explained variance."""
-        cumulative_variance = np.cumsum(self.reduction.explained_variance_ratio_)
-
-        variance_df = pd.DataFrame(
-            {
-                "Components": np.arange(1, len(cumulative_variance) + 1),
-                "CumulativeVariance": cumulative_variance,
-            }
-        )
-
         chart = (
-            alt.Chart(variance_df)
+            alt.Chart(self.variance_df)
+            .transform_window(
+                CumulativeVariance="sum(ExplainedVarianceRatio)",
+                Components="count()",
+            )
             .mark_line(point=True)
             .encode(
                 x=alt.X("Components:Q", title="Number of Components"),
@@ -218,7 +216,7 @@ class EmbeddingsDimReduction:
                     "CumulativeVariance:Q",
                     title="Cumulative Explained Variance",
                 ).scale(domain=[0, 1]).axis(format=".0%"),
-                tooltip=["Components", "CumulativeVariance"],
+                tooltip=["Components:Q", "CumulativeVariance:Q"],
             )
             .properties(
                 title="Cumulative Explained Variance",
