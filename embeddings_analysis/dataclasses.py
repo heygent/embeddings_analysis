@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, wraps
 
 import altair as alt
 import numpy as np
@@ -21,7 +21,33 @@ class EmbeddingsData:
         return EmbeddingsDimReduction(self, obj, obj.fit_transform(self.data))
 
 
-default_props = {"width": 450, "height": 400}
+if mo.running_in_notebook():
+    default_props = {}
+else:
+    default_props = {"width": 450, "height": 400}
+
+
+def plot_fn(func):
+    if mo.running_in_notebook():
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return mo.ui.altair_chart(func(*args, **kwargs))
+        return wrapper
+    
+    return func
+
+def patch_plot_methods(obj):
+    def patch_plot(orig_method):
+        @wraps(orig_method)
+        def new_plot(self, *args, **kwargs):
+            chart = orig_method(self, *args, **kwargs)
+            return mo.ui.altair_chart(chart)
+        return new_plot
+
+    for attr in dir(obj):
+        if attr.startswith("plot_"):
+            method = getattr(obj, attr)
+            setattr(obj, attr, patch_plot(method))
 
 
 @dataclass
@@ -32,7 +58,11 @@ class EmbeddingsDimReduction:
 
     def __str__(self):
         return f"({self.embeddings_data.model_id}) {self.embeddings_data.label} {self.reduction.__class__.__name__}"
-    
+
+    def __post_init__(self):
+        if mo.running_in_notebook():
+            patch_plot_methods(self)
+
     @cached_property
     def df(self) -> pd.DataFrame:
         return pd.DataFrame(
