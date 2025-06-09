@@ -1,24 +1,81 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, astuple
 from functools import cached_property, wraps
 
 import altair as alt
 import numpy as np
 import pandas as pd
 
+import marimo as mo
+
+
+@dataclass(eq=True, frozen=True)
+class EmbeddingsMeta(ABC):
+    model_id: str
+    data: pd.DataFrame
+
+    @property
+    def id(self) -> str:
+        meta = (self.__class__.__name__,) + astuple(self)
+        return str(meta).strip("()").replace(" ", "").replace("/", "__")
+
+    @abstractmethod
+    @property
+    def label(self) -> str:
+        return f"({self.model_id})"
+    
+    def dim_reduction(self, estimator):
+        return EmbeddingsDimReduction(self, estimator, estimator.fit_transform(self.data))
+    
+
+@dataclass(frozen=True, eq=True)
+class RangeEmbeddingsMeta(EmbeddingsMeta):
+    stop: int
+
+    @property
+    def label(self) -> str:
+        return f"{super().label} Number embeddings 0-{self.stop}"
+
+
+@dataclass(frozen=True, eq=True)
+class RandomEmbeddingsMeta:
+    seed: int
+    n: int
+
+    @property
+    def label(self) -> str:
+        return f"{super().label} Random embeddings n={self.n}"
+
+
+@dataclass(frozen=True, eq=True, init=False)
+class ReducedEmbeddingsMeta(EmbeddingsMeta):
+    original: EmbeddingsMeta
+    estimator: object
+
+    def __init__(self, original: EmbeddingsMeta, estimator: object, data: pd.DataFrame):
+        super().__init__(model_id=original.model_id, data=data)
+        self.original = original
+        self.estimator = estimator
+
 
 @dataclass
 class EmbeddingsData:
-    model_id: str
-    label: str
+    meta: EmbeddingsMeta
     data: np.ndarray
+
+    @property
+    def model_id(self) -> str:
+        return self.meta.model_id
+    
+    @property
+    def label(self) -> str:
+        return self.meta.label
 
     def __str__(self):
         return f"({self.model_id}) {self.label}"
 
-    def dim_reduction(self, obj):
-        return EmbeddingsDimReduction(self, obj, obj.fit_transform(self.data))
 
 
 if mo.running_in_notebook():
@@ -436,8 +493,3 @@ class EmbeddingsDimReduction:
                 height=600,
             )
         )
-
-
-def get_digit(num: int, position: int) -> int:
-    """Get the digit at a specific position (0=ones, 1=tens, 2=hundreds)."""
-    return (num // 10**position) % 10
