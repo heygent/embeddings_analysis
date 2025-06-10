@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass, astuple, field
 from functools import cached_property, wraps
 
 import altair as alt
@@ -14,7 +14,6 @@ import marimo as mo
 @dataclass(eq=True, frozen=True)
 class EmbeddingsMeta(ABC):
     model_id: str
-    data: pd.DataFrame
 
     @property
     def id(self) -> str:

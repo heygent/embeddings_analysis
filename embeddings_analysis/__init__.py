@@ -1,2 +1,2 @@
-from .loader import EmbeddingsLoader
+from .loader import TransformersEmbeddingsLoader
 from .dataclasses import EmbeddingsData, EmbeddingsDimReduction
