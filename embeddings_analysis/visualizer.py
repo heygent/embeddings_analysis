@@ -3,3 +3,4 @@ class WordEmbeddingVisualizer:
 
 class NumberEmbeddingVisualizer:
     pass
+

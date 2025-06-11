@@ -1,7 +1,5 @@
-from __future__ import annotations
-
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, astuple, field
+from collections.abc import Iterable
+from dataclasses import dataclass, astuple
 from functools import cached_property, wraps
 
 import altair as alt
@@ -12,15 +10,16 @@ import marimo as mo
 
 
 @dataclass(eq=True, frozen=True)
-class EmbeddingsMeta(ABC):
+class EmbeddingsMeta:
     model_id: str
 
     @property
     def id(self) -> str:
-        meta = (self.__class__.__name__,) + astuple(self)
-        return str(meta).strip("()").replace(" ", "").replace("/", "__")
+        return "_".join([
+            self.model_id.replace("/", "__"),
+            self.__class__.__name__.rstrip("Meta")
+        ])
 
-    @abstractmethod
     @property
     def label(self) -> str:
         return f"({self.model_id})"
@@ -31,7 +30,7 @@ class EmbeddingsMeta(ABC):
 
 @dataclass(frozen=True, eq=True)
 class RangeEmbeddingsMeta(EmbeddingsMeta):
-    stop: int
+    stop: int = None
 
     @property
     def label(self) -> str:
@@ -39,13 +38,21 @@ class RangeEmbeddingsMeta(EmbeddingsMeta):
 
 
 @dataclass(frozen=True, eq=True)
-class RandomEmbeddingsMeta:
+class RandomEmbeddingsMeta(EmbeddingsMeta):
+    sample_size: int
     seed: int
-    n: int
+
+    @property
+    def id(self):
+        return "_".join([
+            super().id,
+            str(self.sample_size),
+            str(self.seed)
+        ])
 
     @property
     def label(self) -> str:
-        return f"{super().label} Random embeddings n={self.n}"
+        return f"{super().label} Random embeddings n={self.sample_size}"
 
 
 @dataclass(frozen=True, eq=True, init=False)
@@ -59,10 +66,10 @@ class ReducedEmbeddingsMeta(EmbeddingsMeta):
         self.estimator = estimator
 
 
-@dataclass
-class EmbeddingsData:
-    meta: EmbeddingsMeta
-    data: np.ndarray
+@dataclass(frozen=True, eq=True)
+class EmbeddingsData[T: EmbeddingsMeta]:
+    meta: T
+    embeddings: pd.DataFrame
 
     @property
     def model_id(self) -> str:
@@ -74,7 +81,13 @@ class EmbeddingsData:
 
     def __str__(self):
         return f"({self.model_id}) {self.label}"
-
+    
+    @cached_property
+    def numpy(self):
+        return self.embeddings.drop(['Token', 'Token ID'], axis=1).to_numpy()
+    
+    def dim_reduction(self, estimator):
+        return EmbeddingsDimReduction(self, estimator, estimator.fit_transform(self.numpy))
 
 
 if mo.running_in_notebook():
@@ -109,11 +122,11 @@ def patch_plot_methods(obj):
 @dataclass
 class EmbeddingsDimReduction:
     embeddings_data: EmbeddingsData
-    reduction: object
+    estimator: object
     transformed: np.ndarray
 
     def __str__(self):
-        return f"({self.embeddings_data.model_id}) {self.embeddings_data.label} {self.reduction.__class__.__name__}"
+        return f"({self.embeddings_data.model_id}) {self.embeddings_data.label} {self.estimator.__class__.__name__}"
 
     def __post_init__(self):
         if mo.running_in_notebook():
@@ -131,7 +144,7 @@ class EmbeddingsDimReduction:
         return alt.TitleParams(
             text=self.embeddings_data.model_id,
             fontSize=24,
-            subtitle=f"{self.embeddings_data.label}: {self.reduction.__class__.__name__}",
+            subtitle=f"{self.embeddings_data.label}: {self.estimator.__class__.__name__}",
             subtitleFontSize=16,
             anchor="middle",
             **kwargs,
@@ -264,9 +277,9 @@ class EmbeddingsDimReduction:
     def variance_df(self) -> pd.DataFrame:
         return pd.DataFrame(
             {
-                "Component": np.arange(1, len(self.reduction.explained_variance_) + 1),
-                "ExplainedVariance": self.reduction.explained_variance_,
-                "ExplainedVarianceRatio": self.reduction.explained_variance_ratio_,
+                "Component": np.arange(1, len(self.estimator.explained_variance_) + 1),
+                "ExplainedVariance": self.estimator.explained_variance_,
+                "ExplainedVarianceRatio": self.estimator.explained_variance_ratio_,
             }
         )
 
