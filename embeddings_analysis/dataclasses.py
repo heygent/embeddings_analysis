@@ -34,7 +34,7 @@ class RangeEmbeddingsMeta(EmbeddingsMeta):
 
     @property
     def label(self) -> str:
-        return f"{super().label} Number embeddings 0-{self.stop}"
+        return f"Number embeddings 0-{self.stop}"
 
 
 @dataclass(frozen=True, eq=True)
@@ -52,7 +52,7 @@ class RandomEmbeddingsMeta(EmbeddingsMeta):
 
     @property
     def label(self) -> str:
-        return f"{super().label} Random embeddings n={self.sample_size}"
+        return f"Random embeddings n={self.sample_size}"
 
 
 @dataclass(frozen=True, eq=True, init=False)
@@ -127,10 +127,6 @@ class EmbeddingsDimReduction:
 
     def __str__(self):
         return f"({self.embeddings_data.model_id}) {self.embeddings_data.label} {self.estimator.__class__.__name__}"
-
-    def __post_init__(self):
-        if mo.running_in_notebook():
-            patch_plot_methods(self)
 
     @cached_property
     def df(self) -> pd.DataFrame:
